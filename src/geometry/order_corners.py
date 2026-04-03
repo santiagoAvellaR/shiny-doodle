@@ -54,3 +54,15 @@ def is_reasonable_quadrilateral(
 
     area = polygon_area(pts)
     return area >= min_area
+
+
+def centers_to_ordered_points(
+    centers: dict[str, np.ndarray],
+    expected_corner_order: list[str],
+) -> np.ndarray:
+    """
+    Construit [top-left, top-right, bottom-right, bottom-left]
+    en utilisant directement l'identité des couleurs.
+    """
+    pts = np.array([centers[color] for color in expected_corner_order], dtype=np.float32)
+    return pts
