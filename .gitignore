@@ -1,0 +1,102 @@
+# ==================================================
+# Python
+# ==================================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Compiled extensions
+*.so
+*.pyd
+*.dll
+
+# Packaging / build
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+share/python-wheels/
+var/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Type checkers / linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environments
+.env
+.env.*
+.venv/
+venv/
+env/
+ENV/
+.python-version
+conda-meta/
+
+# Local settings / secrets
+*.local
+secrets.yaml
+config.local.yaml
+
+# Logs
+*.log
+
+# ==================================================
+# VS Code
+# ==================================================
+.vscode/
+
+# ==================================================
+# Visual Studio
+# ==================================================
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ==================================================
+# PyCharm / JetBrains
+# ==================================================
+.idea/
+*.iml
+
+# ==================================================
+# OS files
+# ==================================================
+.DS_Store
+Thumbs.db
+desktop.ini
