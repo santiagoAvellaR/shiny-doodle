@@ -32,6 +32,22 @@ Example for sequence 1:
 
     python -m src.main --seq 1 --input data/raw/seq1.mp4 --overlay data/assets/jaguar.jpg --output results/videos/seq1_result.mp4 --display
 
+Example for sequence 2:
+
+    python -m src.main --seq 2 --input data/raw/seq2.mp4 --overlay data/assets/jaguar.jpg --output results/videos/seq2_result.mp4 --display
+
+Example for sequence 3:
+
+    python -m src.main --seq 3 --input data/raw/seq3.mp4 --overlay data/assets/jaguar.jpg --output results/videos/seq3_result.mp4 --display
+
+Example for sequence 4:
+
+    python -m src.main --seq 4 --input data/raw/seq4.mp4 --overlay data/assets/jaguar.jpg --output results/videos/seq4_result.mp4 --display
+
+Example for sequence 5:
+
+    python -m src.main --seq 5 --input data/raw/seq5.mp4 --overlay data/assets/jaguar.jpg --output results/videos/seq5_result.mp4 --display
+
 ## Arguments
 
 - `--seq`: sequence number to process

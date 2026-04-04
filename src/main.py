@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from src.pipelines.pipeline_seq1 import run_seq1
+from src.pipelines.pipeline_seq3 import run_seq3
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,6 +60,14 @@ def main() -> None:
 
     if args.seq == 1:
         run_seq1(
+            input_video=input_video,
+            overlay_image=overlay_image,
+            output_video=output_video,
+            display=args.display,
+            max_frames=args.max_frames,
+        )
+    elif args.seq == 3:
+        run_seq3(
             input_video=input_video,
             overlay_image=overlay_image,
             output_video=output_video,
