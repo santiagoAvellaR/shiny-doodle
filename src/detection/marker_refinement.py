@@ -2,6 +2,51 @@ import cv2
 import numpy as np
 from src.detection.color_segmentation import build_mask_from_hsv_ranges
 
+def estimate_green_from_yrb(yellow: np.ndarray | None, red: np.ndarray | None, blue: np.ndarray | None) -> np.ndarray | None:
+    """
+    Estima la posición del verde basándose en la geometría del papel (paralelogramo).
+    Green = Red + Blue - Yellow
+    """
+    if yellow is None or red is None or blue is None:
+        return None
+    xg = red[0] + blue[0] - yellow[0]
+    yg = red[1] + blue[1] - yellow[1]
+    return np.array([xg, yg], dtype=np.float32)
+
+
+def detect_green_local(frame_bgr: np.ndarray, center: np.ndarray, radius: int, hsv_ranges: list, min_area: int, v_max: int | None = None) -> np.ndarray | None:
+    """
+    Busca un sticker de color (verde u otros) en una ROI local alrededor de 'center'.
+    Si v_max es proporcionado, aplica un umbral inverso en el canal V (especial para verde).
+    """
+    h_img, w_img = frame_bgr.shape[:2]
+    x0, y0 = int(round(center[0])), int(round(center[1]))
+    
+    # Definir ROI
+    x_min, x_max = max(0, x0 - radius), min(w_img, x0 + radius)
+    y_min, y_max = max(0, y0 - radius), min(h_img, y0 + radius)
+    if x_max <= x_min or y_max <= y_min: return None
+    
+    roi = frame_bgr[y_min:y_max, x_min:x_max]
+    hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    
+    # Segmentación por color
+    mask = build_mask_from_hsv_ranges(hsv_roi, hsv_ranges)
+    
+    # Segmentación por brillo (V) opcional
+    if v_max is not None:
+        _, mask_v = cv2.threshold(hsv_roi[:, :, 2], v_max, 255, cv2.THRESH_BINARY_INV)
+        mask = cv2.bitwise_and(mask, mask_v)
+    
+    # Refinamiento del centro
+    res = calculate_refined_center(mask, min_area)
+    if res:
+        pt, _, _ = res
+        return pt + np.array([x_min, y_min])
+    return None
+
+
+
 def calculate_refined_center(roi_mask: np.ndarray, min_area: int) -> tuple[np.ndarray, float, float] | None:
     contours, _ = cv2.findContours(roi_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:

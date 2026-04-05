@@ -25,7 +25,7 @@ from src.tracking.marker_tracker import MarkerTracker
 
 # Detección y Refinamiento
 from src.detection.blob_detection import detect_markers
-from src.detection.marker_refinement import refine_green_two_stage
+from src.detection.marker_refinement import estimate_green_from_yrb, detect_green_local
 
 # Calibración
 from src.calibration.undistort import undistort_frame
@@ -63,18 +63,23 @@ def default_seq1_config() -> dict:
         "quad_consistency_area_tol": 0.3, # Tolerancia cambio area
         "quad_consistency_aspect_tol": 0.4, # Tolerancia cambio aspect ratio
 
-        # --- PARÁMETROS DEL VERDE ROBUSTO ---
-        "green_roi_size_coarse": 80,
-        "green_roi_size_fine": 40,
-        "green_v_max": 110,
-        "green_min_circularity": 0.35,
-        "green_hsv_ranges": [
-            ((35, 20, 20), (105, 255, 120)),
+        # --- PARÁMETROS DEL VERDE ROBUSTO (Bootstrap & Normal) ---
+        "green_miss_limit": 5,           # Frames antes de volver a bootstrap
+        "green_roi_bootstrap": 120,      # ROI amplia para búsqueda inicial
+        "green_roi_normal": 60,          # ROI pequeña para tracking estable
+        "green_gate_bootstrap": 100.0,   # Gating laxo
+        "green_gate_normal": 40.0,       # Gating estricto
+        "green_hsv_bootstrap": [
+            ((30, 20, 20), (120, 255, 160)), # Más permisivo
         ],
-        "prediction_weights": {
-            "flow": 0.6,
-            "geom": 0.4
-        },
+        "green_hsv_normal": [
+            ((35, 30, 30), (105, 255, 115)), # Más estricto
+        ],
+        "green_v_max_bootstrap": 150,
+        "green_v_max_normal": 110,
+        "green_min_area": 50,
+        "green_min_circularity": 0.3,
+
         "confidence_weights": {
             "dist": 1.0,
             "area": 0.3,
@@ -127,6 +132,7 @@ def run_seq1(
     trackers = {name: MarkerTracker(cfg["filter_alpha"], cfg["filter_beta"]) for name in cfg["expected_corner_order"]}
     
     frame_idx = 0
+    green_miss_count = 0
     prev_quad_area = None
     prev_quad_aspect = None
 
@@ -160,18 +166,57 @@ def run_seq1(
                     else:
                         measurements[name] = m
 
-            # 2b) Refinamiento especial para el Verde (Dos etapas)
-            p0_green = preds["green"]
-            if p0_green is None:
-                # Fallback geométrico si es el primer frame
-                if "yellow" in measurements and "red" in measurements and "blue" in measurements:
-                    p0_green = measurements["red"] + measurements["blue"] - measurements["yellow"]
+            # 2b) Refinamiento especial para el Verde (Bootstrap vs Normal)
+            # Esto corrige el retardo en Seq3 al usar una búsqueda geométrica inicial
+            pred_green = preds["green"]
+            green_meas = None
             
-            if p0_green is not None:
-                res_green = refine_green_two_stage(frame_bgr, p0_green, cfg)
-                if res_green:
-                    m_green, _ = res_green
-                    measurements["green"] = m_green
+            # Decidir fase: bootstrap (si no inicializado o perdido) o normal (si ya lo seguimos)
+            is_bootstrap = (trackers["green"].pos is None) or (green_miss_count >= cfg["green_miss_limit"])
+            
+            if is_bootstrap:
+                # Semilla geométrica desde Y, R, B (Bootstrapping)
+                green_seed = estimate_green_from_yrb(
+                    measurements.get("yellow"), 
+                    measurements.get("red"), 
+                    measurements.get("blue")
+                )
+                if green_seed is not None:
+                    green_meas = detect_green_local(
+                        frame_bgr,
+                        center=green_seed,
+                        radius=cfg["green_roi_bootstrap"],
+                        hsv_ranges=cfg["green_hsv_bootstrap"],
+                        v_max=cfg["green_v_max_bootstrap"],
+                        min_area=cfg["green_min_area"]
+                    )
+                    # Gating laxo para permitir la primera detección
+                    if green_meas is not None:
+                        dist = np.linalg.norm(green_meas - green_seed)
+                        if dist > cfg["green_gate_bootstrap"]:
+                            green_meas = None
+            else:
+                # Tracking normal usando la predicción del tracker Alpha-Beta
+                green_meas = detect_green_local(
+                    frame_bgr,
+                    center=pred_green,
+                    radius=cfg["green_roi_normal"],
+                    hsv_ranges=cfg["green_hsv_normal"],
+                    v_max=cfg["green_v_max_normal"],
+                    min_area=cfg["green_min_area"]
+                )
+                # Gating estricto para rechazar outliers
+                if green_meas is not None:
+                    dist = np.linalg.norm(green_meas - pred_green)
+                    if dist > cfg["green_gate_normal"]:
+                        green_meas = None
+            
+            # Actualizar mediciones y contador de fallos
+            if green_meas is not None:
+                measurements["green"] = green_meas
+                green_miss_count = 0
+            else:
+                green_miss_count += 1
             
             # --- 3) ACTUALIZACIÓN DE TRACKERS ---
             for name, t in trackers.items():
