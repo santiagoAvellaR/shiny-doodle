@@ -58,21 +58,23 @@ def default_seq3_config() -> dict:
         # --- STABILITY PARAMETERS (Optimized) ---
         "quad_ema_alpha": 0.8,          # Increased for high responsiveness (reactive)
         
-        # --- REFERENCE PARAMETERS (Fast Init) ---
+        # --- REFERENCE PARAMETERS (Fast Frame 5 Init) ---
         "canonical_plane_size": (600, 400),
-        "ref_warmup_frames": 2,         # Start building reference almost immediately
-        "ref_init_frames": 8,           # Quicker median calculation
+        "ref_warmup_frames": 0,         # Start building reference instantly
+        "ref_init_frames": 0,           # Mediana ready in 5 frames
         "ref_update_alpha": 0.005,       # Extremely slow adaptation for high robustness
         
-        # --- SEGMENTATION PARAMETERS (Responsive) ---
+        # --- SEGMENTATION PARAMETERS (Responsive & Conservative) ---
         "fg_diff_thresh": 25,
         "fg_lab_weights": [1.0, 2.5, 2.5], 
         "fg_min_blob_area": 1200,        
         "fg_mask_history": 1,            # Instant hand response (no lag)
-        "paper_inner_margin": 15,
+        "paper_inner_margin": 8,         # Improved coverage near paper edges
+        "fg_mask_dilation": 9,           # Conservative hand expansion
         
         # --- RENDER PARAMETERS ---
-        "render_erosion_size": 3,        
+        "render_erosion_size": 3,        # Occlusion mask softening erosion
+        "render_overlay_erosion": 2,     # Overlay edge contraction to avoid leaks
         "render_soft_blur_size": 7,      
         "draw_debug": True
     })
@@ -219,17 +221,15 @@ def run_seq3(
             # --- 6) SEQ3 SPECIFIC: RECTIFICATION & OCCLUSION ---
             result_bgr = frame_bgr.copy()
             if final_pts is not None and is_reasonable_quadrilateral(final_pts):
-                # A) Rectify current view using smoothed points for render
+                # A) Rectify current view using smoothed points (Unified for both Ref and Seg)
                 rect_view, H_frame_to_plane = warp_plane_to_canonical(frame_bgr, final_pts, cfg["canonical_plane_size"])
-                # B) Rectify using raw points for reference building (less "dragging" blur)
-                rect_view_raw, _ = warp_plane_to_canonical(frame_bgr, pts_to_process, cfg["canonical_plane_size"])
                 
                 # Background Reference Management
                 if clean_reference is None:
                     if is_valid_quad:
                         warmup_count += 1
                         if warmup_count > cfg["ref_warmup_frames"]:
-                            rect_blur = cv2.GaussianBlur(rect_view_raw, (3, 3), 0)
+                            rect_blur = cv2.GaussianBlur(rect_view, (3, 3), 0)
                             ref_buffer.append(rect_blur.astype(np.float32))
                             if len(ref_buffer) >= cfg["ref_init_frames"]:
                                 clean_reference = np.median(np.stack(ref_buffer), axis=0).astype(np.uint8)
@@ -247,19 +247,28 @@ def run_seq3(
                     combined_mask = np.mean(np.stack(list(mask_buffer)), axis=0)
                     fg_mask_stable = (combined_mask > 128).astype(np.uint8) * 255
                     
-                    # Dilatación para ser conservadores (Mano delante) para que tape bien los bordes
-                    k_dilated = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+                    # Dilatación conservadora de la mano (9x9)
+                    d_size = cfg["fg_mask_dilation"]
+                    k_dilated = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (d_size, d_size))
                     fg_mask_final = cv2.dilate(fg_mask_stable, k_dilated)
                     
-                    # E) Background Adaptation (Very slow)
-                    bg_mask = (fg_mask_stable == 0)
+                    # E) Background Adaptation (Using the conservative mask to avoid ghosting)
+                    bg_mask = (fg_mask_final == 0)
                     up_a = cfg["ref_update_alpha"]
                     clean_reference[bg_mask] = cv2.addWeighted(clean_reference[bg_mask], 1.0 - up_a, rect_view[bg_mask], up_a, 0)
                     
-                    # F) Render with soft alpha blending and occlusion awareness
+                    # F) Render with soft alpha blending and overlay edge erosion
                     fg_mask_frame = warp_mask_to_frame(fg_mask_final, H_frame_to_plane, frame_bgr.shape)
+                    
                     H_overlay = compute_homography_from_overlay_to_plane(overlay_bgr, final_pts)
                     warped_overlay, warped_mask = warp_overlay_to_frame(overlay_bgr, frame_bgr.shape, H_overlay)
+                    
+                    # Erosión leve del overlay (2px) para evitar fugas en el borde de contacto
+                    e_size = cfg["render_overlay_erosion"]
+                    if e_size > 0:
+                        k_erosion = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (e_size * 2 + 1, e_size * 2 + 1))
+                        warped_mask = cv2.erode(warped_mask, k_erosion)
+                    
                     result_bgr = composite_overlay_under_foreground(frame_bgr, warped_overlay, warped_mask, fg_mask_frame, cfg)
 
             # Debug Visualization
