@@ -8,7 +8,6 @@ from collections import deque
 from src.geometry.homography import (
     compute_homography_from_overlay_to_plane,
     warp_overlay_to_frame,
-    composite_overlay,
 )
 from src.geometry.order_corners import (
     is_reasonable_quadrilateral,

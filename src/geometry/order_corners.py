@@ -66,3 +66,28 @@ def centers_to_ordered_points(
     """
     pts = np.array([centers[color] for color in expected_corner_order], dtype=np.float32)
     return pts
+
+
+def is_convex_ordered_quad(pts: np.ndarray) -> bool:
+    pts = np.asarray(pts, dtype=np.float32)
+
+    if pts.shape != (4, 2):
+        return False
+
+    crosses = []
+    for i in range(4):
+        p0 = pts[i]
+        p1 = pts[(i + 1) % 4]
+        p2 = pts[(i + 2) % 4]
+
+        v1 = p1 - p0
+        v2 = p2 - p1
+        cross = v1[0] * v2[1] - v1[1] * v2[0]
+        crosses.append(cross)
+
+    crosses = np.array(crosses)
+
+    if np.any(np.abs(crosses) < 1e-3):
+        return False
+
+    return np.all(crosses > 0) or np.all(crosses < 0)

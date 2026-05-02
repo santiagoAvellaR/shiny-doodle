@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.pipelines.pipeline_seq1 import run_seq1
 from src.pipelines.pipeline_seq3 import run_seq3
+from src.pipelines.pipeline_seq4 import run_seq4
 
 
 def parse_args() -> argparse.Namespace:
@@ -15,7 +16,7 @@ def parse_args() -> argparse.Namespace:
         "--seq",
         type=int,
         required=True,
-        help="Numéro de séquence à traiter (pour l'instant: 1).",
+        help="Numéro de séquence à traiter (pour l'instant: 1, 3, 4).",
     )
     parser.add_argument(
         "--input",
@@ -68,6 +69,14 @@ def main() -> None:
         )
     elif args.seq == 3:
         run_seq3(
+            input_video=input_video,
+            overlay_image=overlay_image,
+            output_video=output_video,
+            display=args.display,
+            max_frames=args.max_frames,
+        )
+    elif args.seq == 4:
+        run_seq4(
             input_video=input_video,
             overlay_image=overlay_image,
             output_video=output_video,
