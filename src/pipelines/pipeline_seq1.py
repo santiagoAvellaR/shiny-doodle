@@ -117,6 +117,7 @@ def run_seq1(
     output_video: Path,
     display: bool = False,
     max_frames: int | None = None,
+    debug: bool = False,
 ) -> None:
     cfg = default_seq1_config()
     overlay_bgr = load_overlay_image(overlay_image)
@@ -140,6 +141,11 @@ def run_seq1(
         while True:
             ok, frame_bgr = cap.read()
             if not ok: break
+            if debug:
+                cfg["draw_debug"] = True
+            else:
+                cfg["draw_debug"] = False
+
             if max_frames is not None and frame_idx >= max_frames: break
             
             # Calibración

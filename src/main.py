@@ -42,6 +42,11 @@ def parse_args() -> argparse.Namespace:
         help="Afficher la vidéo pendant le traitement.",
     )
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Afficher les informations de debug sur la vidéo (points, états, logs).",
+    )
+    parser.add_argument(
         "--max-frames",
         type=int,
         default=None,
@@ -66,6 +71,7 @@ def main() -> None:
             output_video=output_video,
             display=args.display,
             max_frames=args.max_frames,
+            debug=args.debug,
         )
     elif args.seq == 3:
         run_seq3(
@@ -74,6 +80,7 @@ def main() -> None:
             output_video=output_video,
             display=args.display,
             max_frames=args.max_frames,
+            debug=args.debug,
         )
     elif args.seq == 4:
         run_seq4(
@@ -82,6 +89,7 @@ def main() -> None:
             output_video=output_video,
             display=args.display,
             max_frames=args.max_frames,
+            debug=args.debug,
         )
     else:
         raise NotImplementedError(

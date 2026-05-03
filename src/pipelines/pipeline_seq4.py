@@ -138,6 +138,7 @@ def run_seq4(
     output_video: Path,
     display: bool = False,
     max_frames: int | None = None,
+    debug: bool = False,
 ) -> None:
     cfg = default_seq4_config()
     overlay_bgr = load_overlay_image(overlay_image)
@@ -160,6 +161,11 @@ def run_seq4(
             ok, frame_bgr = cap.read()
             if not ok or (max_frames is not None and frame_idx >= max_frames):
                 break
+
+            if debug:
+                cfg["draw_debug"] = True
+            else:
+                cfg["draw_debug"] = False
             
             frame_bgr = undistort_frame(frame_bgr, cfg)
             preds = {name: t.predict() for name, t in state.trackers.items()}
