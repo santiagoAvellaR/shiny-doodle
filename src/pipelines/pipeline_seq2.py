@@ -76,6 +76,7 @@ def run_seq2(
     output_video: Path,
     display: bool = False,
     max_frames: int | None = None,
+    debug: bool = False,
 ) -> None:
     cfg = default_seq2_config()
     overlay_bgr = load_overlay_image(overlay_image)

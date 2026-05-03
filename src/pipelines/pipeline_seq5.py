@@ -93,6 +93,7 @@ def run_seq5(
     output_video: Path,
     display: bool = False,
     max_frames: int | None = None,
+    debug: bool = False,
 ) -> None:
     cfg = default_seq5_config()
     overlay_bgr = load_overlay_image(overlay_image)
