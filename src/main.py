@@ -73,6 +73,15 @@ def main() -> None:
             max_frames=args.max_frames,
             debug=args.debug,
         )
+    elif args.seq == 2:
+        run_seq3(
+            input_video=input_video,
+            overlay_image=overlay_image,
+            output_video=output_video,
+            display=args.display,
+            max_frames=args.max_frames,
+            debug=args.debug,
+        )
     elif args.seq == 3:
         run_seq3(
             input_video=input_video,
@@ -84,6 +93,15 @@ def main() -> None:
         )
     elif args.seq == 4:
         run_seq4(
+            input_video=input_video,
+            overlay_image=overlay_image,
+            output_video=output_video,
+            display=args.display,
+            max_frames=args.max_frames,
+            debug=args.debug,
+        )
+    elif args.seq == 5:
+        run_seq3(
             input_video=input_video,
             overlay_image=overlay_image,
             output_video=output_video,
