@@ -4,9 +4,9 @@ import cv2
 # Detecciones y Tracking
 from src.pipelines.pipeline_state import PipelineState
 from src.tracking.marker_tracker import MarkerTracker
-from src.detection.measurement_acquisition import acquire_strong_measurements
+from src.detection.measurement_acquisition import acquire_strong_measurements, run_local_reacquire
 from src.detection.template_matching import run_template_rescue
-from src.tracking.tracker_management import update_trackers_and_templates
+from src.tracking.tracker_management import update_trackers_and_templates, update_marker_visibility_state
 
 # Geometría Funcional
 from src.geometry.quad_prediction import validate_predictive_velocity
@@ -103,6 +103,31 @@ def default_seq4_config() -> dict:
         "missing_corner_refine_downscale": 2,
         "draw_refinement_debug": True,
         "draw_quad_prediction_debug": True,
+
+        "estimated_corner_max_step_px": 25.0,
+        "quad_ema_alpha_all_visible": 0.82,
+        "quad_ema_alpha_reconstructed": 0.45,
+        "quad_ema_alpha_intermediate": 0.28,
+        "quad_ema_alpha_frozen": 0.0,
+
+        "local_reacquire_enabled": True,
+        "local_reacquire_after_miss": 3,
+        "local_reacquire_radius": 75,
+        "local_reacquire_min_area": 35,
+        "local_reacquire_min_circularity": 0.12,
+        "local_reacquire_gate_px": 220.0,
+        "local_reacquire_source_name": "hsv_local_reacquire",
+        "local_reacquire_confirm_frames": 2,
+        "local_reacquire_hard_after_miss": 5,
+        "disable_local_reacquire_inside_foreground": True,
+        "local_reacquire_foreground_max_ratio": 0.4,
+        "local_reacquire_hsv": {
+            "yellow": [((20, 60, 60), (40, 255, 255))],
+            "red": [((0, 60, 60), (12, 255, 255)), ((165, 60, 60), (180, 255, 255))],
+            "green": [((42, 50, 45), (92, 255, 255))], # Relaxed for reacquire
+            "blue": [((100, 65, 55), (135, 255, 255))]
+        },
+        "geometry_method_switch_grace_frames": 3,
     })
     return cfg
 
@@ -141,37 +166,59 @@ def run_seq4(
             
             # 1. Acquire Optical Information
             measurements, measurement_sources, rej_status = acquire_strong_measurements(frame_bgr, preds, state, cfg)
+            
+            # 2. Geometry-seeded local reacquisition (foreground aware)
+            lr_recovered_names = run_local_reacquire(frame_bgr, state.last_predicted_ordered_pts, measurements, measurement_sources, state, cfg)
+            
+            # 3. Rescue via Template Matching
             tm_recovered_names = run_template_rescue(frame_bgr, preds, measurements, measurement_sources, state, cfg)
             
-            # 2. Maintain Temporal Filtering Models
+            # 4. Finalize Visibility States (Candidate Promotion Logic)
+            update_marker_visibility_state(measurements, measurement_sources, state, cfg)
+            
+            # 5. Maintain Temporal Filtering Models
             update_trackers_and_templates(frame_bgr, measurements, measurement_sources, state, cfg)
 
             # 3. Contextualize Visibility Logic
-            visible_centers = {n: measurements[n] for n in set(measurements.keys())}
-            strong_visible_names = {n for n, src in measurement_sources.items() if src in {"hsv", "green_local"}}
+            lr_source = cfg.get("local_reacquire_source_name", "hsv_local_reacquire")
+            strong_visible_names = {n for n, src in measurement_sources.items() if src in {"hsv", "green_local", lr_source + "_confirmed"}}
+            intermediate_visible_names = {n for n, src in measurement_sources.items() if src == lr_source + "_candidate"}
             weak_visible_names = {n for n, src in measurement_sources.items() if src == "template"}
             
+            visible_centers = {n: measurements[n] for n in set(measurements.keys())}
             strong_visible_centers = {n: visible_centers[n] for n in strong_visible_names}
+            intermediate_visible_centers = {n: visible_centers[n] for n in intermediate_visible_names}
             weak_visible_centers = {n: visible_centers[n] for n in weak_visible_names}
 
             # 4. Synthesize Geometry & Temporality
-            predicted_ordered_pts = validate_predictive_velocity(state, strong_visible_centers, cfg)
+            state.last_predicted_ordered_pts = validate_predictive_velocity(state, strong_visible_centers, cfg)
             final_pts, struct_status, geometry_centers, missing_name, was_ref_op, was_edge_op = estimate_robust_geometry(
-                frame_bgr, strong_visible_centers, visible_centers, predicted_ordered_pts, state, cfg
+                frame_bgr, strong_visible_centers, intermediate_visible_centers, visible_centers, state.last_predicted_ordered_pts, state, cfg
             )
 
             # 5. Composite Output
             result_bgr = render_and_occlusion(
-                frame_idx, frame_bgr, overlay_bgr, final_pts, struct_status, strong_visible_names, state, inner_paper_mask, cfg
+                frame_idx, frame_bgr, overlay_bgr, final_pts, struct_status, strong_visible_names, intermediate_visible_names, state, inner_paper_mask, cfg
             )
 
             # 6. Metadata Layout
             if cfg["draw_debug"]:
+                # Calculate Alpha for debug
+                if struct_status == "all_visible":
+                    ema_alpha = cfg.get("quad_ema_alpha_all_visible", 0.82)
+                elif "completed" in struct_status and "intermediate" not in struct_status and "weak" not in struct_status:
+                    ema_alpha = cfg.get("quad_ema_alpha_reconstructed", 0.45)
+                elif "intermediate" in struct_status or "weak" in struct_status:
+                    ema_alpha = cfg.get("quad_ema_alpha_intermediate", 0.28)
+                else:
+                    ema_alpha = 1.0 # default
+
                 result_bgr = draw_advanced_debug_overlay(
                     result_bgr, frame_idx, preds, measurements, measurement_sources, rej_status,
-                    strong_visible_names, weak_visible_names, strong_visible_centers, weak_visible_centers,
+                    strong_visible_names, intermediate_visible_names, weak_visible_names,
+                    strong_visible_centers, intermediate_visible_centers, weak_visible_centers,
                     visible_centers, final_pts, struct_status, geometry_centers, missing_name,
-                    tm_recovered_names, was_ref_op, was_edge_op, state, cfg
+                    tm_recovered_names, lr_recovered_names, was_ref_op, was_edge_op, state, cfg, ema_alpha
                 )
 
             writer.write(result_bgr)

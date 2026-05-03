@@ -16,6 +16,7 @@ def render_and_occlusion(
     final_pts: np.ndarray | None,
     completion_status: str,
     strong_visible_names: set[str],
+    intermediate_visible_names: set[str],
     state: PipelineState,
     inner_paper_mask: np.ndarray,
     cfg: dict
@@ -26,9 +27,12 @@ def render_and_occlusion(
         rect_view, H_frame_to_plane = warp_plane_to_canonical(frame_bgr, final_pts, cfg["canonical_plane_size"])
         
         is_full_real = (completion_status == "all_visible" and len(strong_visible_names) == 4)
+        is_candidate = (completion_status == "all_visible_candidate" and (len(strong_visible_names) + len(intermediate_visible_names)) == 4)
+        
+        allow_ref_update = is_full_real or is_candidate
         
         if state.clean_reference is None:
-            if is_full_real:
+            if allow_ref_update:
                 state.warmup_count += 1
                 if state.warmup_count > cfg.get("ref_warmup_frames", 0):
                     rect_blur = cv2.GaussianBlur(rect_view, (3, 3), 0)
@@ -48,7 +52,7 @@ def render_and_occlusion(
             k_dilated = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (d_size, d_size))
             fg_mask_final = cv2.dilate(fg_mask_stable, k_dilated)
             
-            if is_full_real:
+            if allow_ref_update:
                 bg_mask = (fg_mask_final == 0)
                 up_a = cfg.get("ref_update_alpha", 0.005)
                 state.clean_reference[bg_mask] = cv2.addWeighted(
@@ -78,8 +82,10 @@ def draw_advanced_debug_overlay(
     measurement_sources: dict,
     rej_status: dict,
     strong_visible_names: set[str],
+    intermediate_visible_names: set[str],
     weak_visible_names: set[str],
     strong_visible_centers: dict,
+    intermediate_visible_centers: dict,
     weak_visible_centers: dict,
     visible_centers: dict,
     final_pts: np.ndarray | None,
@@ -87,10 +93,12 @@ def draw_advanced_debug_overlay(
     geometry_centers: dict | None,
     missing_name: str | None,
     tm_recovered_names: list[str],
+    lr_recovered_names: list[str],
     was_ref_optimized: bool,
     was_edge_optimized: bool,
     state: PipelineState,
-    cfg: dict
+    cfg: dict,
+    ema_alpha: float = 0.0
 ):
     """Draws rich metadata showing optical bounds, fallback modes, and track estimates."""
     debug_centers = visible_centers.copy()
@@ -110,6 +118,10 @@ def draw_advanced_debug_overlay(
         cv2.putText(result_bgr, f"Strong Visible: {len(strong_visible_centers)} {sorted(strong_visible_names)}", (20, y_offset), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, val_color, 2)
         y_offset += 25
+        if len(intermediate_visible_centers) > 0:
+            cv2.putText(result_bgr, f"Interm. Visible: {len(intermediate_visible_centers)} {sorted(intermediate_visible_names)}", (20, y_offset), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 200), 2)
+            y_offset += 25
         cv2.putText(result_bgr, f"Weak Visible: {len(weak_visible_centers)} {sorted(weak_visible_names)}", (20, y_offset), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, val_color, 2)
         y_offset += 25
@@ -118,6 +130,9 @@ def draw_advanced_debug_overlay(
         y_offset += 25
         cv2.putText(result_bgr, f"Lost geometry: {state.lost_geometry_count}", (20, y_offset), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, val_color, 2)
+        y_offset += 25
+        cv2.putText(result_bgr, f"EMA alpha: {ema_alpha:.2f}", (20, y_offset), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (150, 255, 150), 2)
         y_offset += 25
         
         if missing_name:
@@ -132,6 +147,13 @@ def draw_advanced_debug_overlay(
                 cv2.circle(result_bgr, (int(est_pt[0]), int(est_pt[1])), 12, (255, 0, 255), 2)
                 cv2.putText(result_bgr, f"est {missing_name}", (int(est_pt[0])+10, int(est_pt[1])-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
+                
+                # Draw step-clamp line if available
+                if state.last_accepted_quad is not None:
+                   idx = cfg["expected_corner_order"].index(missing_name)
+                   raw_pt = state.last_accepted_quad[idx]
+                   if np.linalg.norm(raw_pt - est_pt) > 0.1:
+                       cv2.line(result_bgr, (int(raw_pt[0]), int(raw_pt[1])), (int(est_pt[0]), int(est_pt[1])), (0, 0, 255), 1)
 
     if cfg.get("draw_quad_prediction_debug", False) and state.last_predicted_ordered_pts is not None:
         pred_pts = state.last_predicted_ordered_pts.astype(int)

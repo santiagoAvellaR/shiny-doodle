@@ -39,3 +39,9 @@ class MarkerTracker:
         self.vel = self.vel + b * res
         self.missed_frames = 0
         self.last_valid_pos = self.pos.copy()
+
+    def reset(self, pos: np.ndarray):
+        self.pos = pos.copy()
+        self.vel = np.array([0.0, 0.0], dtype=np.float32)
+        self.missed_frames = 0
+        self.last_valid_pos = self.pos.copy()

@@ -16,13 +16,18 @@ class PipelineState:
     
     last_predicted_ordered_pts: np.ndarray | None = None
     rendered_pts_prev: np.ndarray | None = None
+    last_accepted_quad: np.ndarray | None = None
+    last_render_final_pts: np.ndarray | None = None
     previous_complete_centers: dict[str, np.ndarray] | None = None
 
     # Counts
     marker_miss_counts: dict[str, int] = field(default_factory=dict)
+    reacquire_confirm_counts: dict[str, int] = field(default_factory=dict)
     lost_geometry_count: int = 0
     missing_corner_hold_count: int = 0
     active_missing_name: str | None = None
+    active_geometry_method: str | None = None # "affine" or "parallelogram"
+    geometry_method_fail_count: int = 0
     
     # Area/Aspect History
     prev_quad_area: float | None = None
